@@ -1,5 +1,9 @@
 package net.lax1dude.eaglercraft;
 
+import me.ratsiel.auth.abstracts.exception.AuthenticationException;
+import me.ratsiel.auth.model.mojang.MinecraftAuthenticator;
+import me.ratsiel.auth.model.mojang.MinecraftToken;
+import me.ratsiel.auth.model.mojang.profile.MinecraftProfile;
 import net.minecraft.src.GuiButton;
 import net.minecraft.src.GuiScreen;
 import net.minecraft.src.GuiTextField;
@@ -10,6 +14,7 @@ public class GuiScreenEditProfile extends GuiScreen {
 	
 	private GuiScreen parent;
 	private GuiTextField username;
+	private GuiTextField password;
 	
 	private boolean dropDownOpen = false;
 	private String[] dropDownOptions;
@@ -66,15 +71,16 @@ public class GuiScreenEditProfile extends GuiScreen {
 		this.dropDownOptions = EaglerProfile.concatArrays(EaglerProfile.skinNames.toArray(new String[0]), defaultOptions);
 	}
 	
-	private GuiButton button0, button1, button2, button3;
+	private GuiButton button0, button1, button2, button3, button4;
 
 	public void initGui() {
 		super.initGui();
 		EaglerAdapter.enableRepeatEvents(true);
 		StringTranslate var1 = StringTranslate.getInstance();
 		this.screenTitle = var1.translateKey("profile.title");
-		this.username = new GuiTextField(this.fontRenderer, this.width / 2 - 20 + 1, this.height / 6 + 24 + 1, 138, 20);
+		this.username = new GuiTextField(this.fontRenderer, this.width / 2 - 20 + 1, this.height / 6 + 1, 138, 20);
 		this.username.setFocused(true);
+		this.password = new GuiTextField(this.fontRenderer, this.width / 2 - 20 + 1, this.height / 6 + 24 + 1, 138, 20);
 		this.username.setText(EaglerProfile.username);
 		selectedSlot = EaglerProfile.presetSkinId == -1 ? EaglerProfile.customSkinId : (EaglerProfile.presetSkinId + EaglerProfile.skinNames.size());
 		//this.buttonList.add(new GuiButton(0, this.width / 2 - 100, 140, "eeeee"));
@@ -83,6 +89,8 @@ public class GuiScreenEditProfile extends GuiScreen {
 		this.buttonList.add(button2 = new GuiButton(3, this.width / 2 - 21 + 71, this.height / 6 + 110, 72, 20, var1.translateKey("profile.clearSkin")));
 
 		this.buttonList.add(button3 = new GuiButton(4, this.width / 2 - 21 + 71, this.height / 6 + 134, 72, 20, this.mc.gameSettings.useDefaultProtocol?"Switch to Eaglercraft":"Switch to Vanilla"));
+
+		this.buttonList.add(button4 = new GuiButton(5, this.width / 2 - 21, this.height / 6 + 134, 72, 20, this.mc.gameSettings.sessionId==null?"Microsoft Login":"Logout"));
 		//this.buttonList.add(new GuiButton(200, this.width / 2, this.height / 6 + 72, 150, 20, var1.translateKey("gui.done")));
 	}
 	
@@ -183,7 +191,7 @@ public class GuiScreenEditProfile extends GuiScreen {
 	protected void actionPerformed(GuiButton par1GuiButton) {
 		if(!dropDownOpen) {
 			if(par1GuiButton.id == 200) {
-				EaglerProfile.username = this.username.getText().length() == 0 ? "null" : this.username.getText();
+				if(mc.gameSettings.sessionId==null)EaglerProfile.username = this.username.getText().length() == 0 ? "null" : this.username.getText();
 				EaglerProfile.presetSkinId = selectedSlot - EaglerProfile.skinNames.size();
 				if(EaglerProfile.presetSkinId < 0) {
 					EaglerProfile.presetSkinId = -1;
@@ -219,7 +227,23 @@ public class GuiScreenEditProfile extends GuiScreen {
 			}else if (par1GuiButton.id == 4) {
 				//toggle version mode
 				this.mc.gameSettings.useDefaultProtocol=!this.mc.gameSettings.useDefaultProtocol;
-				button3.displayString=this.mc.gameSettings.useDefaultProtocol?"Switch to Eaglercraft":"Switch to Vanilla";
+				this.button3.displayString=this.mc.gameSettings.useDefaultProtocol?"Switch to Eaglercraft":"Switch to Vanilla";
+			}else if (par1GuiButton.id == 5) {
+				//log in/out
+				if(this.mc.gameSettings.sessionId==null){
+					try {
+						MinecraftAuthenticator minecraftAuthenticator = new MinecraftAuthenticator();
+						MinecraftToken minecraftToken = minecraftAuthenticator.loginWithXbox(this.username.getText(), "");
+						MinecraftProfile minecraftProfile = minecraftAuthenticator.checkOwnership(minecraftToken);
+						this.button4.displayString="Logout";
+						EaglerProfile.username=minecraftToken.getUsername();
+						this.username.setText(EaglerProfile.username);
+						this.password.setText("");
+						mc.gameSettings.sessionId=minecraftToken.getAccessToken();
+					}catch(AuthenticationException e){}
+				}else{
+					this.mc.gameSettings.sessionId=null;
+				}
 			}
 		}
 	}
@@ -270,14 +294,18 @@ public class GuiScreenEditProfile extends GuiScreen {
 	
 	public void onGuiClosed() {
 		EaglerAdapter.enableRepeatEvents(false);
+		if(mc.gameSettings.sessionId==null){
+			EaglerProfile.username=EaglerProfile.username.replaceAll("@","");
+		}
 	}
-	
+
+	//will be called for password typing as well lol, meh
 	protected void keyTyped(char par1, int par2) {
 		this.username.textboxKeyTyped(par1, par2);
-		
+
 		String text = username.getText();
 		if(text.length() > 16) text = text.substring(0, 16);
-		text = text.replaceAll("[^A-Za-z0-9\\-_]", "_");
+		text = text.replaceAll("[^A-Za-z0-9\\-_@]", "_");
 		this.username.setText(text);
 		
 		if(par2 == 200 && selectedSlot > 0) {
